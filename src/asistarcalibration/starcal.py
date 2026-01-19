@@ -45,9 +45,23 @@ from skyfield.named_stars import named_star_dict
 class StarCal:
     """Star calibration"""
 
-    def __init__(self, image_file, output_file, sc_file=None):
+    # load existing stars?
+    # Find stars
+    # Perform Fit
+    # Check calibration
+    # Calculate output arrays
+    # save output arrays to file
 
-        image = self.load_image(image_file)
+    def __init__(self, image, time, glat, glon, output_file, sc_file=None):
+
+        self.time = time
+        self.site_lat = glat
+        self.site_lon = glon
+
+        self.site_station = 'PKR'
+        self.site_instrument = 'xxx'
+
+        #image = self.load_image(image_file)
         self.find_stars(image, sc_file)
         self.save_starcal_file(output_file)
 
@@ -86,25 +100,25 @@ class StarCal:
         self.ax.scatter(x, y, facecolors='none', edgecolors='r')
         self.fig.canvas.draw()
 
-    def load_image(self, raw_file):
-        """Load image and metadata from raw file"""
+#    def load_image(self, raw_file):
+#        """Load image and metadata from raw file"""
+#
+#        image = h5py.File(raw_file, 'r')['image']
+#        cooked_image = self.prep_image(image)
+#
+#        self.time = dt.datetime.utcfromtimestamp(image.attrs['start_time'])
+#        self.site_lat = image.attrs['latitude']
+#        self.site_lon = image.attrs['longitude']
+#        self.site_station = image.attrs['station']
+#        self.site_instrument = image.attrs['instrument']
+#
+#        return cooked_image
 
-        image = h5py.File(raw_file, 'r')['image']
-        cooked_image = self.prep_image(image)
-
-        self.time = dt.datetime.utcfromtimestamp(image.attrs['start_time'])
-        self.site_lat = image.attrs['latitude']
-        self.site_lon = image.attrs['longitude']
-        self.site_station = image.attrs['station']
-        self.site_instrument = image.attrs['instrument']
-
-        return cooked_image
-
-    def prep_image(self, image, contrast=99.95, rotation_angle=0.):
+    def prep_image(self, image, contrast=99.0, rotation_angle=0.):
         """Prepare image to display"""
 
         cooked_image = np.array(image)
-        cooked_image = equalize(cooked_image, contrast)
+        #cooked_image = equalize(cooked_image, contrast)
 
         return cooked_image
 
@@ -114,7 +128,7 @@ class StarCal:
         self.prep_star_lookup()
 
         print('Site Information\n'+16*'=')
-        print(f'{self.site_station.upper()}    {self.site_instrument}')
+        #print(f'{self.site_station.upper()}    {self.site_instrument}')
         print(f'TIME: {self.time}')
         print(f'GLAT: {self.site_lat}\nGLON: {self.site_lon}')
 

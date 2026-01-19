@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 
-name = "mangonetwork-calibrate"
+name = "asistarcalibration"
 dynamic = ["version"]
-description = "MANGO imager calibration"
+description = "General ASI imager calibration"
 readme = "README.md"
 requires-python = ">= 3.9"
 license = { file = "LICENSE" }
@@ -47,16 +47,16 @@ devel = [
 homepage="https://www.mangonetwork.org"
 repository="https://github.com/mangonetwork/image-calibration"
 
-[project.scripts]
-    mango-calibrate = "mangonetwork.calibrate.calibrate:main"
-    mango-starcal = "mangonetwork.calibrate.starcal:main"
-    mango-checkcal = "mangonetwork.calibrate.checkcal:main"
+#[project.scripts]
+#    mango-calibrate = "mangonetwork.calibrate.calibrate:main"
+#    mango-starcal = "mangonetwork.calibrate.starcal:main"
+#    mango-checkcal = "mangonetwork.calibrate.checkcal:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.dynamic]
-version = { attr = "mangonetwork.calibrate.__version__"}
+version = { attr = "asistarcalibration.__version__"}
 
 [tool.pytest.ini_options]
 addopts = [
