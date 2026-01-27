@@ -28,75 +28,29 @@ from skyfield.named_stars import named_star_dict
 from scipy.optimize import least_squares
 from scipy.spatial.transform import Rotation
 
-#if sys.version_info < (3, 9):
-#    import importlib_resources as resources
-#else:
-#    from importlib import resources
-
-# Make this work with planets as well - very important for what can be seen in auroral ASIs
-
 
 class StarCal:
     """Star calibration"""
 
-    # load existing stars?
-    # Find stars
-    # Perform Fit
-    # Check calibration
-    # Calculate output arrays
-    # save output arrays to file
-
-    #def __init__(self, image, time, glat, glon, output_file, sc_file=None):
-    def __init__(self, glat, glon):
+    def __init__(self, glat, glon, time, station=None, instrument=None):
 
         #self.time = time
         self.site_lat = glat
         self.site_lon = glon
+        self.time = time
 
-        self.site_station = 'PKR'
-        self.site_instrument = 'xxx'
-
-        #image = self.load_image(image_file)
-        #self.find_stars(image, sc_file)
-        #self.save_starcal_file(output_file)
-        #self.star_name = list()
-        #self.star_hip = list()
-        #self.star_azel = list()
-        #self.star_pos = list()
+        self.site_station = str(station)
+        self.site_instrument = str(instrument)
 
         self.starlist = pd.DataFrame(columns=['Name','HIP','az','el','x','y'])
 
 
-
     def load_stars(self, sc_file):
 
-        new_stars = pd.read_table(sc_file, skiprows=4, sep='\s+')
-        print(new_stars.columns)
+        new_stars = pd.read_table(sc_file, comment='#', sep='\s+')
 
-#        new_stars = list()
-#        with open(sc_file) as f:
-#            for line in f:
-#                # Skip lines that are comments or blank
-#                if (not line or line[0]=='#' or line.isspace()):
-#                    continue
-#                name, hip, az, el, x, y = line.split()
-#                new_stars.append({'Name': name,
-#                                  'HIP': int(hip),
-#                                  'az': float(az),
-#                                  'el': float(el),
-#                                  'x': float(x),
-#                                  'y': float(y)})
-#                #self.starlist = pd.concat([self.starlist, pd.DataFrame([new_star])], ignore_index=True)
-#
-#                #self.starlist._append({'Name':name, 'HIP':int(hip), 'az':float(az), 'el':float(el), 'x':float(x), 'y':float(y)}, ignore_index=True)
-#                #self.star_name.append(name)
-#                #self.star_hip.append(int(hip))
-#                #self.star_azel.append([float(az), float(el)])
-#                #self.star_pos.append([float(x), float(y)])
-#        # Check stars included in the provided starcal file against hip catolog
-#        #self.check_stars()
-#        #new_stars = pd.Dataframe(stars)
         self.starlist = pd.concat([self.starlist, new_stars])
+
 
     def add_star(self, click):
         """Add user selected star and az,el based on HIP."""
@@ -108,88 +62,54 @@ class StarCal:
         y = click.ydata
         print(f"Star at {x=:02f}, {y=:02f}")
 
-        # User entered HIP number
-        hip = input('HIP #: ')
-        hip = int(hip)
-        print(hip)
+        # User entered planet or HIP number
+        key = input('Planet/HIP: ')
 
-        # Look up star based on HIP and calculate az/el
         try:
-            s = Star.from_dataframe(self.hipcat.loc[hip])
+            # Look up star based on HIP
+            if key.isdigit():
+                s = Star.from_dataframe(self.hipcat.loc[int(key)])
+                name = self.hipcat.loc[int(key),'name']
+                hip = int(key)
+            # Look up planet
+            else:
+                try:
+                    s = self.planets[key]
+                except KeyError:
+                    key1 = f'{key} barycenter'
+                    s = self.planets[key1]
+                name = key
+                hip = 0
         except KeyError:
-            print(f'Entered Hipparcos designation {hip} is not in database!')
+            print(f'Entered {key} is not a recognized planet or in the Hipparcos database!')
             return
 
+        # Calculate az/el
         elev, azmt, _ = self.site_ref.observe(s).apparent().altaz()
 
         # Append star information
-        #self.star_azel.append([azmt.degrees, elev.degrees])
-        #self.star_pos.append([x, y])
-        #self.star_hip.append(hip)
-        #self.star_name.append(self.hipcat.loc[hip,'name'])
-        new_star = {'Name': self.hipcat.loc[hip,'name'],
+        new_star = {'Name': name,
                     'HIP': hip,
                     'az': azmt.degrees,
                     'el': elev.degrees,
                     'x': x,
                     'y': y}
-#        self.starlist.append(new_star, ignore_index=True)
-        self.starlist = pd.concat([self.starlist, pd.DataFrame([new_star])], ignore_index=True)
+        self.starlist.loc[len(self.starlist)] = new_star
 
         # Mark star on plot
         self.ax.scatter(x, y, facecolors='none', edgecolors='r')
         self.fig.canvas.draw()
 
-#    def load_image(self, raw_file):
-#        """Load image and metadata from raw file"""
-#
-#        image = h5py.File(raw_file, 'r')['image']
-#        cooked_image = self.prep_image(image)
-#
-#        self.time = dt.datetime.utcfromtimestamp(image.attrs['start_time'])
-#        self.site_lat = image.attrs['latitude']
-#        self.site_lon = image.attrs['longitude']
-#        self.site_station = image.attrs['station']
-#        self.site_instrument = image.attrs['instrument']
-#
-#        return cooked_image
 
-    def prep_image(self, image, contrast=99.0, rotation_angle=0.):
-        """Prepare image to display"""
-
-        cooked_image = np.array(image)
-        #cooked_image = equalize(cooked_image, contrast)
-
-        return cooked_image
-
-    def find_stars(self, image, time):
+    def find_stars(self, image):
         """Display image and track manual selection of stars"""
 
-        self.prep_star_lookup(time)
+        self.prep_star_lookup(self.time)
 
         print('Site Information\n'+16*'=')
-        #print(f'{self.site_station.upper()}    {self.site_instrument}')
-        print(f'TIME: {time}')
+        print(f'{self.site_station.upper()}    {self.site_instrument}')
+        print(f'TIME: {self.time}')
         print(f'GLAT: {self.site_lat}\nGLON: {self.site_lon}')
-
-        ## Initialize arrays
-        #self.star_name = list()
-        #self.star_hip = list()
-        #self.star_azel = list()
-        #self.star_pos = list()
-        #if sc_file:
-        #    with open(sc_file) as f:
-        #        for line in f:
-        #            # Skip lines that are comments or blank
-        #            if (not line or line[0]=='#' or line.isspace()):
-        #                continue
-        #            name, hip, az, el, x, y = line.split()
-        #            self.star_name.append(name)
-        #            self.star_hip.append(int(hip))
-        #            self.star_azel.append([float(az), float(el)])
-        #            self.star_pos.append([float(x), float(y)])
-        #    # Check stars included in the provided starcal file against hip catolog
-        #    self.check_stars()
 
         # Display image with stars
         self.fig, self.ax = plt.subplots()
@@ -198,8 +118,6 @@ class StarCal:
         # Display image
         self.ax.imshow(image, cmap='gray')
         
-#        for x, y in self.star_pos:
-#            self.ax.scatter(x, y, facecolors='none', edgecolors='r')
         self.ax.scatter(self.starlist['x'], self.starlist['y'], facecolors='none', edgecolors='r')
 
         plt.show()
@@ -211,8 +129,8 @@ class StarCal:
         # Define site location
         ts = load.timescale()
         t = ts.utc(time.year, time.month, time.day, time.hour, time.minute, time.second)
-        planets = load('de421.bsp')
-        earth = planets['earth']
+        self.planets = load('de421.bsp')
+        earth = self.planets['earth']
         site = earth + wgs84.latlon(self.site_lat, self.site_lon, elevation_m=0)
         self.site_ref = site.at(t)
 
@@ -226,8 +144,6 @@ class StarCal:
         for name, hip in named_star_dict.items():
             df.loc[hip,'name'] = name
 
-        #filtered_df = df[df['name'] != 'xxxxx']
-        #print(filtered_df)
         self.hipcat = df
 
     def check_stars(self):
@@ -249,24 +165,15 @@ class StarCal:
         with open(output, 'w') as f:
             # write header
             f.write(f'# {self.site_station.upper()}    {self.site_instrument}\n')
-            #f.write(f'# {self.time.isoformat()}\n')
+            f.write(f'# {self.time.isoformat()}\n')
             f.write(f'# GLAT={self.site_lat:12.6f}    GLON={self.site_lon:12.6f}\n')
             f.write(80*'#'+'\n')
-            print(self.starlist)
             df_string = self.starlist.to_string(header=True, index=False, col_space=[15,8,15,15,10,10])
             f.write(df_string)
-#            f.write(f'# {"Name":<20}{"HIP":>8}{"Azimuth":>15}{"Elevation":>15}{"X":>10}{"Y":>10}\n')
-#
-#            # add new stars
-#            for name, hip, azel, pos in zip(self.star_name, self.star_hip, self.star_azel, self.star_pos):
-#                f.write(f'{name:20s}{hip:10d}{azel[0]:15.4f}{azel[1]:15.4f}{pos[0]:10.2f}{pos[1]:10.2f}\n')
 
 
     def calculate_calibration_params(self):
         """Load calibration parameters from starcal file"""
-
-#        # read in data from starcal file
-#        star_num, star_az, star_el, x, y = np.loadtxt(starcal_file, unpack=True, usecols=(1,2,3,4,5))
 
         # true x,y positions of stars
         xp = np.cos(self.starlist['el'] * np.pi / 180.0) * np.sin(self.starlist['az'] * np.pi / 180.0)
@@ -373,38 +280,38 @@ class StarCal:
 
         return [x0, y0, rl, theta, C, D]
 
-    #def save_calibration_params(self, output, config_file):
-    def save_calibration_params(self, output, config_file):
-        """Save results"""
-
-        params = dict(x0 = str(self.x0),
-                      y0 = str(self.y0),
-                      rl = str(self.rl),
-                      theta = str(self.theta),
-                      a = str(self.A),
-                      b = str(self.B),
-                      c = str(self.C),
-                      d = str(self.D))
-
-        config = configparser.ConfigParser()
-
-        # If a real filename is provide for a config file, read it in
-        if config_file:
-            config.read(config_file)
-
-        config["CALIBRATION_PARAMS"] = dict(
-                x0 = str(self.x0),
-                y0 = str(self.y0),
-                rl = str(self.rl),
-                theta = str(self.theta),
-                a = str(self.A),
-                b = str(self.B),
-                c = str(self.C),
-                d = str(self.D))
-
-
-        with open(output, "w", encoding="utf-8") as cf:
-            config.write(cf)
+#    #def save_calibration_params(self, output, config_file):
+#    def save_calibration_params(self, output, config_file):
+#        """Save results"""
+#
+#        params = dict(x0 = str(self.x0),
+#                      y0 = str(self.y0),
+#                      rl = str(self.rl),
+#                      theta = str(self.theta),
+#                      a = str(self.A),
+#                      b = str(self.B),
+#                      c = str(self.C),
+#                      d = str(self.D))
+#
+#        config = configparser.ConfigParser()
+#
+#        # If a real filename is provide for a config file, read it in
+#        if config_file:
+#            config.read(config_file)
+#
+#        config["CALIBRATION_PARAMS"] = dict(
+#                x0 = str(self.x0),
+#                y0 = str(self.y0),
+#                rl = str(self.rl),
+#                theta = str(self.theta),
+#                a = str(self.A),
+#                b = str(self.B),
+#                c = str(self.C),
+#                d = str(self.D))
+#
+#
+#        with open(output, "w", encoding="utf-8") as cf:
+#            config.write(cf)
 
 
     def elev2r(self, elev):
