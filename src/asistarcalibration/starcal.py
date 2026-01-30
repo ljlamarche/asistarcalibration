@@ -102,7 +102,7 @@ class StarCal:
         self.fig.canvas.draw()
 
 
-    def find_stars(self, image):
+    def find_stars(self, image, vmin=None, vmax=None):
         """Display image and track manual selection of stars"""
 
         self.prep_star_lookup(self.time)
@@ -117,7 +117,7 @@ class StarCal:
         # Set up button press event trigger
         self.fig.canvas.mpl_connect('button_press_event', self.add_star)
         # Display image
-        self.ax.imshow(image, cmap='gray')
+        self.ax.imshow(image, cmap='gray', vmin=vmin, vmax=vmax)
         
         self.ax.scatter(self.starlist['x'], self.starlist['y'], facecolors='none', edgecolors='r')
 
