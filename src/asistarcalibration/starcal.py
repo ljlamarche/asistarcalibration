@@ -1,15 +1,6 @@
 #!/usr/bin/env python
 """Find and/or load stars to use for calibration and calculate calibration parameters"""
 
-import datetime as dt
-import argparse
-import io
-import logging
-import os
-import sys
-import requests
-
-import h5py
 import numpy as np
 import pandas as pd
 import pymap3d as pm
@@ -27,7 +18,6 @@ from skyfield.data import hipparcos
 from skyfield.named_stars import named_star_dict
 
 from scipy.optimize import least_squares
-from scipy.spatial.transform import Rotation
 
 
 class StarCal:
@@ -35,7 +25,6 @@ class StarCal:
 
     def __init__(self, glat, glon, time, station=None, instrument=None):
 
-        #self.time = time
         self.site_lat = glat
         self.site_lon = glon
         self.time = time
@@ -176,16 +165,12 @@ class StarCal:
     def calculate_calibration_params(self, imax, jmax):
         """Load calibration parameters from starcal file"""
 
-        # true x,y positions of stars
-#        xp = np.cos(self.starlist['el'] * np.pi / 180.0) * np.sin(self.starlist['az'] * np.pi / 180.0)
-#        yp = np.cos(self.starlist['el'] * np.pi / 180.0) * np.cos(self.starlist['az'] * np.pi / 180.0)
-
+        # true az/el of stars
         az0 = self.starlist['az'] * np.pi / 180.
         el0 = self.starlist['el'] * np.pi / 180.
 
-        # FIX INIT PARAMS
-        #init_params = self.initial_params(self.starlist['x'], self.starlist['y'], xp, yp)
         init_params = self.initial_params(self.starlist['x'], self.starlist['y'], az0, el0, imax, jmax)
+
         params = least_squares(self.residuals, init_params, args=(self.starlist['x'], self.starlist['y'], az0, el0))
         self.x0, self.y0, self.rl, self.theta, self.C, self.D = params.x
 
@@ -194,6 +179,7 @@ class StarCal:
         self.B = -(np.pi / 2.0 + self.C + self.D)
 
         # DEBUG: To confirm star locations match after transformation
+        # Generate plots of how well fitting conforms to real star positions
         azt, elt = self.transform(self.starlist['x'], self.starlist['y'], self.x0, self.y0, self.rl,
                                   self.theta, self.A, self.B, self.C, self.D)
         fig = plt.figure()
@@ -202,27 +188,22 @@ class StarCal:
         ax1.set_theta_direction(-1)
         ax2 = fig.add_subplot(122)
         cmap=plt.get_cmap('tab20')
-        #rp = np.sqrt((self.starlist['x']-self.x0)**2+(self.starlist['y']-self.y0)**2)/self.rl
 
         xn = (self.starlist['x'] - self.x0) / self.rl
         yn = (self.starlist['y'] - self.y0) / self.rl
         rt = np.sqrt(xn**2 + yn**2)
 
         for i in range(len(self.starlist)):
-            #ax1.scatter(xp[i], yp[i], s=5, color=cmap(i%20))    # Projected true star position
-            #ax1.scatter(xt[i], yt[i], facecolors='none', edgecolors=cmap(i%20)) # Transformed CCD star position
             ax1.scatter(az0[i], np.cos(el0[i]), s=5, color=cmap(i%20))
             ax1.scatter(azt[i], np.cos(elt[i]), facecolors='none', edgecolors=cmap(i%20))
             ax2.scatter(rt[i], self.starlist['el'][i], color=cmap(i%20), label=self.starlist['Name'][i])
         ax1.set_xlabel(r'$X/R_L$')
         ax1.set_ylabel(r'$Y/R_L$')
         ax1.set_title('Alignment of Transformed Star Position\nwith True Projected Position')
-        #ax1.grid(which='both')
         elgrid = np.arange(0., 90., 10.)
         azgrid = np.arange(0., 360., 30.)
         ax1.set_rgrids(radii=np.cos(np.deg2rad(elgrid)), labels=elgrid)
         ax1.set_thetagrids(angles=azgrid, labels=azgrid)
-
 
         legend_elements = [Line2D([0], [0], marker='o', color='w', label='Projected True Position', markerfacecolor='k', markersize=5),
                            Line2D([0], [0], marker='o', color='w', label='Transformed CCD Position', markeredgecolor='k', markersize=5)]
@@ -234,8 +215,6 @@ class StarCal:
         ax2.set_xlim([0., 1.])
         ax2.set_ylim([0., 90.])
         ax2.grid()
-        #theta = np.linspace(0., 2*np.pi, 100)
-        #ax1.plot(np.cos(theta), np.sin(theta), color='dimgrey')
         r = np.arange(0., 1., 0.01)
         t = self.A + self.B*r + self.C*r**2 + self.D*r**3
         ax2.plot(r, np.rad2deg(t), color='dimgrey')
@@ -247,26 +226,6 @@ class StarCal:
         ax2.legend(loc='center left', bbox_to_anchor=(1.01,0.5), fontsize='x-small')
         plt.show()
 
-    # pylint: disable=too-many-arguments, too-many-locals
-
-#    def transform(self, x, y, x0, y0, rl, theta, A, B, C, D):
-#        """Transformation"""
-#
-#        x1 = (x - x0) / rl
-#        y1 = (y - y0) / rl
-#
-#        t = theta * np.pi / 180.0
-#        x2 = np.cos(t) * x1 - np.sin(t) * y1
-#        y2 = np.sin(t) * x1 + np.cos(t) * y1
-#
-#        r = np.sqrt(x2**2 + y2**2)
-#        lam = A + B * r + C * r**2 + D * r**3
-#        d = np.cos(lam)
-#
-#        x3 = d * x2 / r
-#        y3 = d * y2 / r
-#
-#        return x3, y3
 
     def transform(self, xc, yc, x0, y0, rl, theta, A, B, C, D):
         """Transformation"""
@@ -277,7 +236,11 @@ class StarCal:
         r = np.sqrt(xn**2 + yn**2)
         lam = A + B * r + C * r**2 + D * r**3
 
-        phi = theta * np.pi / 180.0 - np.arctan2(yn, xn)
+        #phi = theta * np.pi / 180.0 - np.arctan2(yn, xn)
+        phi = np.deg2rad(theta) - np.arctan2(yn, xn)
+        phi[phi<0.] += 2*np.pi
+        phi[phi>=2*np.pi] -= 2*np.pi
+        #phi = phi % 2*np.pi
 
         return phi, lam
 
@@ -293,32 +256,13 @@ class StarCal:
         dl = (l2 - l1)
         dp = (p2 - p1)
         a = np.sin(dl/2)**2 + np.sin(dp/2)**2 * np.cos(l1) * np.cos(l2)
-        psi = 2 * np.asin(np.sqrt(a))
+        res = 2 * np.asin(np.sqrt(a))
 
-        #res = np.sqrt((xp - xt) ** 2 + (yp - yt) ** 2)
-        return psi
+        ## Horizontal Residual
+        #res = np.sqrt(np.cos(l1)**2 + np.cos(l2)**2 -2*np.cos(l1)*np.cos(l2)*np.cos(p2-p1))
 
-#    def initial_params(self, x, y, xp, yp):
-#        """Initial parameters"""
-#
-#        # Use center of image and half of y distance for x0, y0, and rl
-#        x0, y0, rl = [347.5, 259.5, 259.5]
-#
-#        # appriximate lense function with line
-#        A, B, C, D = [np.pi / 2, -np.pi / 2, 0.0, 0.0]
-#
-#        # calculate transformation with initial tranlation and lens function params but no rotation
-#        xu, yu = self.transform(x, y, x0, y0, rl, 0.0, A, B, C, D)
-#
-#        # Find rotation matrix such that the vectors to the star locations roughly match
-#        Pu = np.array([xu, yu, np.zeros(len(x))]).T
-#        Pp = np.array([xp, yp, np.zeros(len(x))]).T
-#        R, _ = Rotation.align_vectors(Pp, Pu)
-#
-#        # Find euler angles of rotation matrix and select "z" rotation as an approximate theta
-#        theta = R.as_euler("xyz", degrees=True)[2]
-#
-#        return [x0, y0, rl, theta, C, D]
+        return res
+
 
     def initial_params(self, x, y, az0, el0, imax, jmax):
         """Initial parameters"""
@@ -334,23 +278,8 @@ class StarCal:
         # calculate transformation with initial tranlation and lens function params but no rotation
         az, el = self.transform(x, y, x0, y0, rl, 0.0, A, B, C, D)
 
-        #print(az, az0, (az-az0)%(2*np.pi))
-
-        #fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
-        #ax.scatter(az, np.cos(el))
-        #ax.scatter(az0, np.cos(el0))
-        #plt.show()
-
-        #theta = np.mean((az-az0) % (2*np.pi)) * 180./np.pi
+        # calculate rotation by the average difference in azimuth
         theta = np.mean((az0-az) % (2*np.pi)) * 180./np.pi
-
-#        # Find rotation matrix such that the vectors to the star locations roughly match
-#        Pu = np.array([xu, yu, np.zeros(len(x))]).T
-#        Pp = np.array([xp, yp, np.zeros(len(x))]).T
-#        R, _ = Rotation.align_vectors(Pp, Pu)
-#
-#        # Find euler angles of rotation matrix and select "z" rotation as an approximate theta
-#        theta = R.as_euler("xyz", degrees=True)[2]
 
         return [x0, y0, rl, theta, C, D]
 
@@ -376,11 +305,6 @@ class StarCal:
 
         # Plot Zenith
         ax.scatter(self.x0, self.y0, s=50, color='red', marker='P', label='zenith')
-
-        ## Generate lense function arrays for interpretation
-        #t = np.linspace(0., 2*np.pi, 100)
-        #r = np.linspace(0., 1., 100)
-        #lam = np.rad2deg(self.A + self.B * r + self.C * r**2 + self.D * r**3)
 
         # Set Up color maps
         cmap = mpl.colormaps['rainbow']
@@ -481,119 +405,4 @@ def equalize(image, contrast, num_bins=10000):
 
 
 
-# ------------------------------------------------------------------------
-# Main application
-# ------------------------------------------------------------------------
 
-
-#def parse_args():
-#    """Command line parsing"""
-#
-#    parser = argparse.ArgumentParser(
-#        description="Manually identify stars for calibration"
-#    )
-#
-#    parser.add_argument("station", help="Station code")
-#    parser.add_argument("instrument", help="redline or greenline")
-#    parser.add_argument("-n", "--new", action="store_true", default=False, help="Generate new file from scratch")
-#    parser.add_argument("-t", "--time", help="Time for star idenfication")
-#
-#    parser.add_argument(
-#        "-s", "--starcal", metavar="FILE", help="Existing starcal file (for appending stars)"
-#    )
-#    parser.add_argument(
-#        "-o",
-#        "--output",
-#        default="mango-starcal.txt",
-#        help="Output starcal filename (default is mango-starcal.txt)",
-#    )
-#    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
-#
-#    return parser.parse_args()
-#
-#
-#def find_starcal(station, instrument):
-#    """Find starcal file in package data"""
-#
-#    # Placeholder for default config file location
-#    #   This function can be rewritten later
-#    config_dir = os.environ['MANGONETWORK_CONFIGS']
-#
-#    starcal_file = os.path.join(config_dir, f"starcal-{station}-{instrument}.txt")
-#
-#    logging.debug("Using package starcal file: %s", starcal_file)
-#
-#    #return resources.files("mangonetwork.raw.data").joinpath(starcal_file).read_text()
-#    return starcal_file
-#
-#
-#def read_header(starcal_file):
-#    """Read header from starcal file"""
-#
-#    with open(starcal_file, 'r') as f:
-#        line1 = f.readline()
-#        _, station, instrument = line1.split()
-#        line2 = f.readline()
-#        time = dt.datetime.fromisoformat(line2.split()[1])
-#
-#    return station, instrument, time
-#
-#
-#def download_image(station, instrument, time):
-#    """Download image for star matching"""
-#
-#    url = f'https://data.mangonetwork.org/data/transport/mango/archive/{station.lower()}/{instrument}/raw/{time:%Y}/{time:%j}/{time:%H}/mango-{station.lower()}-{instrument}-{time:%Y%m%d-%H%M%S}.hdf5'
-#    logging.debug("Downloading raw image file: %s", url)
-#    r=requests.get(url)
-#    open('mango_image.hdf5', 'wb').write(r.content)
-#
-#    return 'mango_image.hdf5'
-#
-#
-#def main():
-#    """Main application"""
-#
-#    args = parse_args()
-#
-#    if args.verbose:
-#        logging.basicConfig(level=logging.DEBUG)
-#    else:
-#        logging.basicConfig(level=logging.INFO)
-#
-#    if args.new:
-#        # If new flag set, generate a fresh starcal file
-#        logging.debug("Generating new starcal file")
-#        station = args.station
-#        instrument = args.instrument
-#        time = dt.datetime.fromisoformat(args.time)
-#        starcal_file = None
-#
-#    elif args.starcal:
-#        # If starcal file provided, read in header
-#        if not os.path.exists(args.starcal):
-#            logging.error("Starcal file not found")
-#            sys.exit(1)
-#        logging.debug("Using provided starcal file: %s", args.starcal)
-#        starcal_file = args.starcal
-#        station, instrument, time = read_header(starcal_file)
-#
-#    else:
-#        # If no starcal file provided, find the default and read in header
-#        starcal_file = find_starcal(args.station, args.instrument)
-#        if not os.path.exists(starcal_file):
-#            logging.error("No default starcal file found for %s %s!", args.station, args.instrument)
-#            sys.exit(1)
-#        logging.debug("Using defalt starcal file: %s", starcal_file)
-#        station, instrument, time = read_header(starcal_file)
-#
-#    # Download image
-#    image_filename = download_image(station, instrument, time)
-#
-#    # Run star calibration
-#    StarCal(image_filename, args.output, sc_file=starcal_file)
-#
-#    sys.exit(0)
-#
-#
-#if __name__ == "__main__":
-#    main()
