@@ -178,6 +178,16 @@ class StarCal:
         self.A = np.pi / 2.0
         self.B = -(np.pi / 2.0 + self.C + self.D)
 
+
+        print(f'X0={self.x0}')
+        print(f'Y0={self.y0}')
+        print(f'RL={self.rl}')
+        print(f'THETA={self.theta}')
+        print(f'A={np.rad2deg(self.A)}')
+        print(f'B={np.rad2deg(self.B)}')
+        print(f'C={np.rad2deg(self.C)}')
+        print(f'D={np.rad2deg(self.D)}')
+
         # DEBUG: To confirm star locations match after transformation
         # Generate plots of how well fitting conforms to real star positions
         azt, elt = self.transform(self.starlist['x'], self.starlist['y'], self.x0, self.y0, self.rl,
@@ -237,7 +247,7 @@ class StarCal:
         lam = A + B * r + C * r**2 + D * r**3
 
         #phi = theta * np.pi / 180.0 - np.arctan2(yn, xn)
-        phi = np.deg2rad(theta) - np.arctan2(yn, xn)
+        phi = np.deg2rad(theta) - np.arctan2(yn, xn) + np.pi
         phi[phi<0.] += 2*np.pi
         phi[phi>=2*np.pi] -= 2*np.pi
         #phi = phi % 2*np.pi
@@ -322,14 +332,16 @@ class StarCal:
             ax.plot(x, y, color=cmap(el/90.), label=f'el={el}')
 
         # Plot North Line
-        x1 = self.x0 - self.rl * np.sin(np.deg2rad(self.theta))
-        y1 = self.y0 - self.rl * np.cos(np.deg2rad(self.theta))
+        #x1 = self.x0 - self.rl * np.sin(np.deg2rad(self.theta))
+        #y1 = self.y0 - self.rl * np.cos(np.deg2rad(self.theta))
+        x1 = self.x0 - self.rl * np.cos(np.deg2rad(self.theta))
+        y1 = self.y0 - self.rl * np.sin(np.deg2rad(self.theta))
         ax.plot([self.x0, x1], [self.y0, y1], color='k', linestyle=':', label='North')
 
         # Plot Polaris
         r0 = self.elev2r(self.site_lat)
-        x = self.x0 - r0 * self.rl * np.sin(np.deg2rad(self.theta))
-        y = self.y0 - r0 * self.rl * np.cos(np.deg2rad(self.theta))
+        x = self.x0 - r0 * self.rl * np.cos(np.deg2rad(self.theta))
+        y = self.y0 - r0 * self.rl * np.sin(np.deg2rad(self.theta))
         print(r0, x, y)
         ax.scatter(x, y, s=50, color='magenta', marker='*', label='Polaris')
 
@@ -348,7 +360,10 @@ class StarCal:
     def calculate_position_array(self, imax, jmax, alt):
 
         # az/el array
-        xc, yc = np.meshgrid(np.arange(imax), np.arange(jmax))
+        #xc, yc = np.meshgrid(np.arange(imax), np.arange(jmax))
+        xc, yc = np.meshgrid(np.arange(imax)[::-1], np.arange(jmax)[::-1])
+        xc = np.rot90(xc)
+        yc = np.rot90(yc)
         az, el = self.transform(xc, yc, self.x0, self.y0, self.rl, self.theta, self.A, self.B, self.C, self.D)
 
 
