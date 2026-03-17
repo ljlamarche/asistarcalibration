@@ -47,6 +47,10 @@ class StarCal:
         # This makes use of the Hipparcos Catolog
         # https://rhodesmill.org/skyfield/stars.html
 
+        # For single clicks, do nothing
+        if not click.dblclick:
+            return
+
         # Star location in figure from click event
         x = click.xdata
         y = click.ydata
@@ -360,10 +364,10 @@ class StarCal:
     def calculate_position_array(self, imax, jmax, alt):
 
         # az/el array
-        #xc, yc = np.meshgrid(np.arange(imax), np.arange(jmax))
-        xc, yc = np.meshgrid(np.arange(imax)[::-1], np.arange(jmax)[::-1])
-        xc = np.rot90(xc)
-        yc = np.rot90(yc)
+        xc, yc = np.meshgrid(np.arange(imax), np.arange(jmax))
+        #xc, yc = np.meshgrid(np.arange(imax)[::-1], np.arange(jmax)[::-1])
+        #xc = np.rot90(xc)
+        #yc = np.rot90(yc)
         az, el = self.transform(xc, yc, self.x0, self.y0, self.rl, self.theta, self.A, self.B, self.C, self.D)
 
 
