@@ -178,15 +178,13 @@ class StarCal:
 
         # az/el array
         xc, yc = np.meshgrid(np.arange(imax), np.arange(jmax))
-        #xc, yc = np.meshgrid(np.arange(imax)[::-1], np.arange(jmax)[::-1])
-        #xc = np.rot90(xc)
-        #yc = np.rot90(yc)
         az, el = self.transform(xc, yc, self.x0, self.y0, self.rl, self.theta, self.A, self.B, self.C, self.D)
 
 
         # lat/lon array
         x, y, z = pm.geodetic2ecef(site_lat, site_lon, 0.)
-        vx, vy, vz = pm.enu2uvw(np.cos(el)*np.sin(az), np.cos(el)*np.cos(az), np.sin(el), site_lat, site_lon)
+        e, n, u = pm.aer2enu(az, el, 1., deg=False)
+        vx, vy, vz = pm.enu2uvw(e, n, u, site_lat, site_lon)
     
         earth = pm.Ellipsoid.from_name('wgs84')
         a2 = (earth.semimajor_axis + alt*1000.)**2
@@ -237,7 +235,6 @@ class StarCal:
         r0 = self.elev2r(site_lat)
         x = self.x0 - r0 * self.rl * np.cos(np.deg2rad(self.theta))
         y = self.y0 - r0 * self.rl * np.sin(np.deg2rad(self.theta))
-        print(r0, x, y)
         ax.scatter(x, y, s=50, color='magenta', marker='*', label='Polaris')
 
         # Add colorbars
@@ -252,35 +249,6 @@ class StarCal:
         plt.show()
 
 
-
-
-def equalize(image, contrast, num_bins=10000):
-    """Histogram Equalization to adjust contrast [1%-99%]"""
-    # copied function from imageops.py
-    # needed to make the image visable - there may be more efficient ways of doing this
-
-    image_array_1d = image.flatten()
-
-    image_histogram, bins = np.histogram(image_array_1d, num_bins)
-    image_histogram = image_histogram[1:]
-    bins = bins[1:]
-    cdf = np.cumsum(image_histogram)
-
-    # spliced to cut off non-image area
-    # any way to determine this dynamically?  How periminant is it?
-    cdf = cdf[:9996]
-
-    max_cdf = max(cdf)
-    max_index = np.argmin(abs(cdf - contrast / 100 * max_cdf))
-    min_index = np.argmin(abs(cdf - (100 - contrast) / 100 * max_cdf))
-    vmax = float(bins[max_index])
-    vmin = float(bins[min_index])
-    low_value_indices = image_array_1d < vmin
-    image_array_1d[low_value_indices] = vmin
-    high_value_indices = image_array_1d > vmax
-    image_array_1d[high_value_indices] = vmax
-
-    return image_array_1d.reshape(image.shape)
 
 
 
