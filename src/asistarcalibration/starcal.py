@@ -55,6 +55,8 @@ class StarCal:
         x = click.xdata
         y = click.ydata
         print(f"Star at {x=:02f}, {y=:02f}")
+        new_pnt = self.ax.scatter(x, y, facecolors='blue', edgecolors='none')
+        self.fig.canvas.draw()
 
         # User entered planet or HIP number
         key = input('Planet/HIP: ')
@@ -76,6 +78,8 @@ class StarCal:
                 hip = 0
         except KeyError:
             print(f'Entered {key} is not a recognized planet or in the Hipparcos database!')
+            new_pnt.remove()
+            self.fig.canvas.draw()
             return
 
         # Calculate az/el
@@ -91,7 +95,7 @@ class StarCal:
         self.starlist.loc[len(self.starlist)] = new_star
 
         # Mark star on plot
-        self.ax.scatter(x, y, facecolors='none', edgecolors='r')
+        new_pnt.set(facecolors='none', edgecolors='r')
         self.fig.canvas.draw()
 
 
