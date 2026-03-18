@@ -5,17 +5,9 @@ import numpy as np
 import pandas as pd
 import pymap3d as pm
 
-# Workaround due to bug in matplotlib event handling interface
-# https://github.com/matplotlib/matplotlib/issues/30419
 import matplotlib as mpl
-if mpl.get_backend() == 'macosx':
-    mpl.use('tkagg')
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-
-from skyfield.api import Star, load, wgs84
-from skyfield.data import hipparcos
-from skyfield.named_stars import named_star_dict
 
 from scipy.optimize import least_squares
 
@@ -23,17 +15,12 @@ from scipy.optimize import least_squares
 class StarCal:
     """Star calibration"""
 
-    def __init__(self, glat, glon, time, station=None, instrument=None):
-
-        self.site_lat = glat
-        self.site_lon = glon
-        self.time = time
-
-        self.site_station = str(station)
-        self.site_instrument = str(instrument)
+    def __init__(self, starfile):
 
         self.starlist = pd.DataFrame(columns=['Name','HIP','az','el','x','y'])
 
+        self.load_stars(starfile)
+        
 
     def load_stars(self, sc_file):
 
@@ -42,135 +29,7 @@ class StarCal:
         self.starlist = pd.concat([self.starlist, new_stars])
 
 
-    def add_star(self, click):
-        """Add user selected star and az,el based on HIP."""
-        # This makes use of the Hipparcos Catolog
-        # https://rhodesmill.org/skyfield/stars.html
-
-        # For single clicks, do nothing
-        if not click.dblclick:
-            return
-
-        # Star location in figure from click event
-        x = click.xdata
-        y = click.ydata
-        print(f"Star at {x=:02f}, {y=:02f}")
-        new_pnt = self.ax.scatter(x, y, facecolors='blue', edgecolors='none')
-        self.fig.canvas.draw()
-
-        # User entered planet or HIP number
-        key = input('Planet/HIP: ')
-
-        try:
-            # Look up star based on HIP
-            if key.isdigit():
-                s = Star.from_dataframe(self.hipcat.loc[int(key)])
-                name = self.hipcat.loc[int(key),'name']
-                hip = int(key)
-            # Look up planet
-            else:
-                try:
-                    s = self.planets[key]
-                except KeyError:
-                    key1 = f'{key} barycenter'
-                    s = self.planets[key1]
-                name = key
-                hip = 0
-        except KeyError:
-            print(f'Entered {key} is not a recognized planet or in the Hipparcos database!')
-            new_pnt.remove()
-            self.fig.canvas.draw()
-            return
-
-        # Calculate az/el
-        elev, azmt, _ = self.site_ref.observe(s).apparent().altaz()
-
-        # Append star information
-        new_star = {'Name': name,
-                    'HIP': hip,
-                    'az': azmt.degrees,
-                    'el': elev.degrees,
-                    'x': x,
-                    'y': y}
-        self.starlist.loc[len(self.starlist)] = new_star
-
-        # Mark star on plot
-        new_pnt.set(facecolors='none', edgecolors='r')
-        self.fig.canvas.draw()
-
-
-    def find_stars(self, image, vmin=None, vmax=None):
-        """Display image and track manual selection of stars"""
-
-        self.prep_star_lookup(self.time)
-
-        print('Site Information\n'+16*'=')
-        print(f'{self.site_station.upper()}    {self.site_instrument}')
-        print(f'TIME: {self.time}')
-        print(f'GLAT: {self.site_lat}\nGLON: {self.site_lon}')
-
-        # Display image with stars
-        self.fig, self.ax = plt.subplots()
-        # Set up button press event trigger
-        self.fig.canvas.mpl_connect('button_press_event', self.add_star)
-        # Display image
-        self.ax.imshow(image, cmap='gray', vmin=vmin, vmax=vmax)
-        
-        self.ax.scatter(self.starlist['x'], self.starlist['y'], facecolors='none', edgecolors='r')
-
-        plt.show()
-
-
-    def prep_star_lookup(self, time):
-        """Prepare skyfield for star lookups"""
-
-        # Define site location
-        ts = load.timescale()
-        t = ts.utc(time.year, time.month, time.day, time.hour, time.minute, time.second)
-        self.planets = load('de421.bsp')
-        earth = self.planets['earth']
-        site = earth + wgs84.latlon(self.site_lat, self.site_lon, elevation_m=0)
-        self.site_ref = site.at(t)
-
-        # Load HIP catolog
-        with load.open(hipparcos.URL) as f:
-            df = hipparcos.load_dataframe(f)
-
-        # Add star names to HIP catolog
-        star_name_list = ['xxxxx']*len(df)
-        df['name'] = star_name_list
-        for name, hip in named_star_dict.items():
-            df.loc[hip,'name'] = name
-
-        self.hipcat = df
-
-    def check_stars(self):
-        """Check stars loaded from input starcal file against HIP catalog for consistency"""
-        # Need to look at how this is done to still check input stars
-
-        for name, hip, azel in zip(self.star_name, self.star_hip, self.star_azel):
-            print('\nHIP: ', hip)
-            print('Name: ', self.hipcat.loc[hip]['name'], name)
-            s = Star.from_dataframe(self.hipcat.loc[hip])
-            elev, azmt, _ = self.site_ref.observe(s).apparent().altaz()
-            print('Azimuth: ', azmt.degrees, azel[0], azmt.degrees-azel[0])
-            print('Elevation: ', elev.degrees, azel[1], elev.degrees-azel[1])
-
-
-    def save_starcal_file(self, output):
-        """ Save output starcal file"""
-
-        with open(output, 'w') as f:
-            # write header
-            f.write(f'# {self.site_station.upper()}    {self.site_instrument}\n')
-            f.write(f'# {self.time.isoformat()}\n')
-            f.write(f'# GLAT={self.site_lat:12.6f}    GLON={self.site_lon:12.6f}\n')
-            f.write(80*'#'+'\n')
-            df_string = self.starlist.to_string(header=True, index=False, col_space=[15,8,15,15,10,10])
-            f.write(df_string)
-
-
-    def calculate_calibration_params(self, imax, jmax):
+    def calculate_calibration_params(self, imax, jmax, plot=True):
         """Load calibration parameters from starcal file"""
 
         # true az/el of stars
@@ -198,51 +57,52 @@ class StarCal:
 
         # DEBUG: To confirm star locations match after transformation
         # Generate plots of how well fitting conforms to real star positions
-        azt, elt = self.transform(self.starlist['x'], self.starlist['y'], self.x0, self.y0, self.rl,
-                                  self.theta, self.A, self.B, self.C, self.D)
-        fig = plt.figure()
-        ax1 = fig.add_subplot(121, projection='polar')
-        ax1.set_theta_zero_location('N')
-        ax1.set_theta_direction(-1)
-        ax2 = fig.add_subplot(122)
-        cmap=plt.get_cmap('tab20')
-
-        xn = (self.starlist['x'] - self.x0) / self.rl
-        yn = (self.starlist['y'] - self.y0) / self.rl
-        rt = np.sqrt(xn**2 + yn**2)
-
-        for i in range(len(self.starlist)):
-            ax1.scatter(az0[i], np.cos(el0[i]), s=5, color=cmap(i%20))
-            ax1.scatter(azt[i], np.cos(elt[i]), facecolors='none', edgecolors=cmap(i%20))
-            ax2.scatter(rt[i], self.starlist['el'][i], color=cmap(i%20), label=self.starlist['Name'][i])
-        ax1.set_xlabel(r'$X/R_L$')
-        ax1.set_ylabel(r'$Y/R_L$')
-        ax1.set_title('Alignment of Transformed Star Position\nwith True Projected Position')
-        elgrid = np.arange(0., 90., 10.)
-        azgrid = np.arange(0., 360., 30.)
-        ax1.set_rgrids(radii=np.cos(np.deg2rad(elgrid)), labels=elgrid)
-        ax1.set_thetagrids(angles=azgrid, labels=azgrid)
-
-        legend_elements = [Line2D([0], [0], marker='o', color='w', label='Projected True Position', markerfacecolor='k', markersize=5),
-                           Line2D([0], [0], marker='o', color='w', label='Transformed CCD Position', markeredgecolor='k', markersize=5)]
-        ax1.legend(handles=legend_elements, loc='upper left')
-        
-        ax2.set_xlabel('R')
-        ax2.set_ylabel('Elevation (deg)')
-        ax2.set_title('Lens Function')
-        ax2.set_xlim([0., 1.])
-        ax2.set_ylim([0., 90.])
-        ax2.grid()
-        r = np.arange(0., 1., 0.01)
-        t = self.A + self.B*r + self.C*r**2 + self.D*r**3
-        ax2.plot(r, np.rad2deg(t), color='dimgrey')
-        lf_str = (f'A={np.rad2deg(self.A):.2f}\n'
-                  f'B={np.rad2deg(self.B):.2f}\n'
-                  f'C={np.rad2deg(self.C):.2f}\n'
-                  f'D={np.rad2deg(self.D):.2f}')
-        ax2.text(0.98, 0.98, lf_str, ha='right', va='top', transform=ax2.transAxes)
-        ax2.legend(loc='center left', bbox_to_anchor=(1.01,0.5), fontsize='x-small')
-        plt.show()
+        if plot:
+            azt, elt = self.transform(self.starlist['x'], self.starlist['y'], self.x0, self.y0, self.rl,
+                                      self.theta, self.A, self.B, self.C, self.D)
+            fig = plt.figure()
+            ax1 = fig.add_subplot(121, projection='polar')
+            ax1.set_theta_zero_location('N')
+            ax1.set_theta_direction(-1)
+            ax2 = fig.add_subplot(122)
+            cmap=plt.get_cmap('tab20')
+    
+            xn = (self.starlist['x'] - self.x0) / self.rl
+            yn = (self.starlist['y'] - self.y0) / self.rl
+            rt = np.sqrt(xn**2 + yn**2)
+    
+            for i in range(len(self.starlist)):
+                ax1.scatter(az0[i], np.cos(el0[i]), s=5, color=cmap(i%20))
+                ax1.scatter(azt[i], np.cos(elt[i]), facecolors='none', edgecolors=cmap(i%20))
+                ax2.scatter(rt[i], self.starlist['el'][i], color=cmap(i%20), label=self.starlist['Name'][i])
+            ax1.set_xlabel(r'$X/R_L$')
+            ax1.set_ylabel(r'$Y/R_L$')
+            ax1.set_title('Alignment of Transformed Star Position\nwith True Projected Position')
+            elgrid = np.arange(0., 90., 10.)
+            azgrid = np.arange(0., 360., 30.)
+            ax1.set_rgrids(radii=np.cos(np.deg2rad(elgrid)), labels=elgrid)
+            ax1.set_thetagrids(angles=azgrid, labels=azgrid)
+    
+            legend_elements = [Line2D([0], [0], marker='o', color='w', label='Projected True Position', markerfacecolor='k', markersize=5),
+                               Line2D([0], [0], marker='o', color='w', label='Transformed CCD Position', markeredgecolor='k', markersize=5)]
+            ax1.legend(handles=legend_elements, loc='upper left')
+            
+            ax2.set_xlabel('R')
+            ax2.set_ylabel('Elevation (deg)')
+            ax2.set_title('Lens Function')
+            ax2.set_xlim([0., 1.])
+            ax2.set_ylim([0., 90.])
+            ax2.grid()
+            r = np.arange(0., 1., 0.01)
+            t = self.A + self.B*r + self.C*r**2 + self.D*r**3
+            ax2.plot(r, np.rad2deg(t), color='dimgrey')
+            lf_str = (f'A={np.rad2deg(self.A):.2f}\n'
+                      f'B={np.rad2deg(self.B):.2f}\n'
+                      f'C={np.rad2deg(self.C):.2f}\n'
+                      f'D={np.rad2deg(self.D):.2f}')
+            ax2.text(0.98, 0.98, lf_str, ha='right', va='top', transform=ax2.transAxes)
+            ax2.legend(loc='center left', bbox_to_anchor=(1.01,0.5), fontsize='x-small')
+            plt.show()
 
 
     def transform(self, xc, yc, x0, y0, rl, theta, A, B, C, D):
@@ -314,7 +174,36 @@ class StarCal:
         return r
 
 
-    def checkcal(self, image):
+    def calculate_position_array(self, site_lat, site_lon, alt, imax, jmax):
+
+        # az/el array
+        xc, yc = np.meshgrid(np.arange(imax), np.arange(jmax))
+        #xc, yc = np.meshgrid(np.arange(imax)[::-1], np.arange(jmax)[::-1])
+        #xc = np.rot90(xc)
+        #yc = np.rot90(yc)
+        az, el = self.transform(xc, yc, self.x0, self.y0, self.rl, self.theta, self.A, self.B, self.C, self.D)
+
+
+        # lat/lon array
+        x, y, z = pm.geodetic2ecef(site_lat, site_lon, 0.)
+        vx, vy, vz = pm.enu2uvw(np.cos(el)*np.sin(az), np.cos(el)*np.cos(az), np.sin(el), site_lat, site_lon)
+    
+        earth = pm.Ellipsoid.from_name('wgs84')
+        a2 = (earth.semimajor_axis + alt*1000.)**2
+        b2 = (earth.semimajor_axis + alt*1000.)**2
+        c2 = (earth.semiminor_axis + alt*1000.)**2
+    
+        A = vx**2/a2 + vy**2/b2 + vz**2/c2
+        B = x*vx/a2 + y*vy/b2 + z*vz/c2
+        C = x**2/a2 + y**2/b2 + z**2/c2 -1
+    
+        alpha = (np.sqrt(B**2-A*C)-B)/A
+    
+        lat, lon, alt = pm.ecef2geodetic(x + alpha*vx, y + alpha*vy, z + alpha*vz)
+
+        return az, el, lat, lon
+
+    def checkcal(self, image, site_lat):
 
         # Display image with stars
         fig, ax = plt.subplots()
@@ -340,14 +229,12 @@ class StarCal:
             ax.plot(x, y, color=cmap(el/90.), label=f'el={el}')
 
         # Plot North Line
-        #x1 = self.x0 - self.rl * np.sin(np.deg2rad(self.theta))
-        #y1 = self.y0 - self.rl * np.cos(np.deg2rad(self.theta))
         x1 = self.x0 - self.rl * np.cos(np.deg2rad(self.theta))
         y1 = self.y0 - self.rl * np.sin(np.deg2rad(self.theta))
         ax.plot([self.x0, x1], [self.y0, y1], color='k', linestyle=':', label='North')
 
         # Plot Polaris
-        r0 = self.elev2r(self.site_lat)
+        r0 = self.elev2r(site_lat)
         x = self.x0 - r0 * self.rl * np.cos(np.deg2rad(self.theta))
         y = self.y0 - r0 * self.rl * np.sin(np.deg2rad(self.theta))
         print(r0, x, y)
@@ -364,35 +251,6 @@ class StarCal:
 
         plt.show()
 
-
-    def calculate_position_array(self, imax, jmax, alt):
-
-        # az/el array
-        xc, yc = np.meshgrid(np.arange(imax), np.arange(jmax))
-        #xc, yc = np.meshgrid(np.arange(imax)[::-1], np.arange(jmax)[::-1])
-        #xc = np.rot90(xc)
-        #yc = np.rot90(yc)
-        az, el = self.transform(xc, yc, self.x0, self.y0, self.rl, self.theta, self.A, self.B, self.C, self.D)
-
-
-        # lat/lon array
-        x, y, z = pm.geodetic2ecef(self.site_lat, self.site_lon, 0.)
-        vx, vy, vz = pm.enu2uvw(np.cos(el)*np.sin(az), np.cos(el)*np.cos(az), np.sin(el), self.site_lat, self.site_lon)
-    
-        earth = pm.Ellipsoid.from_name('wgs84')
-        a2 = (earth.semimajor_axis + alt*1000.)**2
-        b2 = (earth.semimajor_axis + alt*1000.)**2
-        c2 = (earth.semiminor_axis + alt*1000.)**2
-    
-        A = vx**2/a2 + vy**2/b2 + vz**2/c2
-        B = x*vx/a2 + y*vy/b2 + z*vz/c2
-        C = x**2/a2 + y**2/b2 + z**2/c2 -1
-    
-        alpha = (np.sqrt(B**2-A*C)-B)/A
-    
-        lat, lon, alt = pm.ecef2geodetic(x + alpha*vx, y + alpha*vy, z + alpha*vz)
-
-        return az, el, lat, lon
 
 
 
