@@ -170,6 +170,8 @@ class StarCal:
         Delta1 = 2 * self.C**3 - 9 * self.D * self.C * self.B + 27 * self.D**2 * (self.A-el)
         Gamma = ((Delta1 + np.sqrt(Delta1**2 - 4 * Delta0**3)) / 2)**(1./3.)
         r = -(self.C + Gamma + Delta0/Gamma)/(3 * self.D)
+        print((Delta1**2 - 4 * Delta0**3))
+        print(elev, r)
 
         return r
 

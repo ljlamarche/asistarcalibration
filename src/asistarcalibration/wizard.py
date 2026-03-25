@@ -6,43 +6,74 @@ Using this will skip some of the more flexible steps.
 
 import numpy as np
 import h5py
+from apexpy import Apex
 
 from asistarcalibration.starcal import StarCal
 from asistarcalibration.starfinder import StarFinder
 
-def wizard(img, glat, glon, time, 
+def wizard(img, site_lat, site_lon, time, 
            starlist='starlist.txt', 
            outfile='pixelcoords.h5', 
            projalt=110., 
-           elevcutoff=15.):
+           elevcutoff=15.,
+           starfind = True,
+           plot_kw=dict()):
 
-    find = StarFinder(glat, glon, time)
-    
-    find.find_stars(img)
-    
-    find.save_starcal_file(starlist)
+    # Skip starfinding step
+    if starfind:
+        find = StarFinder(site_lat, site_lon, time)
+        
+        find.find_stars(img, plot_kw)
+        
+        find.save_starcal_file(starlist)
     
     cal = StarCal(starlist)
     
     cal.calculate_calibration_params(*img.shape)
     
-    cal.checkcal(img, glat)
+    cal.checkcal(img, site_lat)
     
-    azmt, elev, lat, lon = cal.calculate_position_array(glat, glon, projalt, *img.shape)
+    azmt, elev, glat, glon = cal.calculate_position_array(site_lat, site_lon, projalt, *img.shape)
     
     mask = elev<np.deg2rad(elevcutoff)
+
+    A = Apex(time.item())
+    mlat, mlon = A.geo2apex(glat, glon, projalt)
+    mlat[mask] = np.nan
+    mlon[mask] = np.nan
+    flat, flon, _ = A.apex2geo(mlat, mlon, 110.)
+#    flat, flon = A.map_to_height(glat, glon, projalt, 110.)
+
     
     with h5py.File(outfile, 'w') as h5:
 
-        ds = h5.create_dataset('Latitude', data=lat)
+        ds = h5.create_dataset('Latitude', data=glat)
         ds.attrs['Description'] = 'Geodetic Latitude'
         ds.attrs['Units'] = 'degrees'
         ds.attrs['Altitude'] = projalt
 
-        ds = h5.create_dataset('Longitude', data=lon)
+        ds = h5.create_dataset('Longitude', data=glon)
         ds.attrs['Description'] = 'Geodetic Longitude'
         ds.attrs['Units'] = 'degrees'
         ds.attrs['Altitude'] = projalt
+
+        ds = h5.create_dataset('MagneticLatitude', data=mlat)
+        ds.attrs['Description'] = 'Apex Magnetic Latitude'
+        ds.attrs['Units'] = 'degrees'
+
+        ds = h5.create_dataset('MagneticLongitude', data=mlon)
+        ds.attrs['Description'] = 'Apex Magnetic Longitude'
+        ds.attrs['Units'] = 'degrees'
+
+        ds = h5.create_dataset('FootpointLatitude', data=flat)
+        ds.attrs['Description'] = 'Magnetic Footpoint Latitude'
+        ds.attrs['Units'] = 'degrees'
+        ds.attrs['Altitude'] = 110.
+
+        ds = h5.create_dataset('FootpointLongitude', data=flon)
+        ds.attrs['Description'] = 'Magnetic Footpoint Longitude'
+        ds.attrs['Units'] = 'degrees'
+        ds.attrs['Altitude'] = 110.
 
         ds = h5.create_dataset('Azimuth', data=azmt)
         ds.attrs['Description'] = 'Azimuth angle east of North'

@@ -3,7 +3,7 @@
 GUI to locate and enter stars by clicking in matplotlib image frame.
 """
 
-
+import datetime as dt
 import numpy as np
 import pandas as pd
 
@@ -27,7 +27,11 @@ class StarFinder:
 
         self.site_lat = glat
         self.site_lon = glon
-        self.time = time
+
+        # Make sure timw is timezone aware datetime object
+        time = time.item()
+        if not time.tzinfo:
+            self.time = time.replace(tzinfo=dt.timezone.utc)
 
         self.site_station = str(station)
         self.site_instrument = str(instrument)
@@ -99,10 +103,10 @@ class StarFinder:
         self.fig.canvas.draw()
 
 
-    def find_stars(self, image, vmin=None, vmax=None):
+    def find_stars(self, image, imshow_kw=dict()):
         """Display image and track manual selection of stars"""
 
-        self.prep_star_lookup(self.time)
+        self.prep_star_lookup()
 
         print('Site Information\n'+16*'=')
         print(f'{self.site_station.upper()}    {self.site_instrument}')
@@ -114,19 +118,21 @@ class StarFinder:
         # Set up button press event trigger
         self.fig.canvas.mpl_connect('button_press_event', self.add_star)
         # Display image
-        self.ax.imshow(image, cmap='gray', vmin=vmin, vmax=vmax)
+        self.ax.imshow(image, cmap='gray', **imshow_kw)
         
         self.ax.scatter(self.starlist['x'], self.starlist['y'], facecolors='none', edgecolors='r')
 
         plt.show()
 
 
-    def prep_star_lookup(self, time):
+    def prep_star_lookup(self):
         """Prepare skyfield for star lookups"""
 
-        # Define site location
+        # Convert input time to skyfiled time object
         ts = load.timescale()
-        t = ts.utc(time.year, time.month, time.day, time.hour, time.minute, time.second)
+        t = ts.from_datetime(self.time)
+
+        # Define site location
         self.planets = load('de421.bsp')
         earth = self.planets['earth']
         site = earth + wgs84.latlon(self.site_lat, self.site_lon, elevation_m=0)

@@ -1,1 +1,1 @@
-from wizard import wizard, equalize
+from .wizard import wizard, equalize
