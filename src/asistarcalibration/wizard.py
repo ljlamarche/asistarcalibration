@@ -16,6 +16,7 @@ def wizard(img, site_lat, site_lon, time,
            outfile='pixelcoords.h5', 
            projalt=110., 
            elevcutoff=15.,
+           footalt=110.,
            starfind = True,
            plot_kw=dict()):
 
@@ -37,13 +38,35 @@ def wizard(img, site_lat, site_lon, time,
     
     mask = elev<np.deg2rad(elevcutoff)
 
+    ###########################################################################
+    # Magnetic mapping/footpointing
+    # This may be a specialized thing that should be handled elsewhere
+    ###########################################################################
+
     A = Apex(time.item())
     mlat, mlon = A.geo2apex(glat, glon, projalt)
-    mlat[mask] = np.nan
-    mlon[mask] = np.nan
-    flat, flon, _ = A.apex2geo(mlat, mlon, 110.)
-#    flat, flon = A.map_to_height(glat, glon, projalt, 110.)
 
+    if projalt >= footalt:
+        # No problem if emission altitude greater than footpoint altitude
+        flat, flon, _ = A.apex2geo(mlat, mlon, footalt)
+    else:
+        # Find the minimum rectangle for the unmasked region
+        # This is a work around to deal with the fact that the corners of the image
+        #  are so far from the center of the FoV they get mapped to a completetly 
+        #  different part of the Earth and are sometimes at low enough magnetic 
+        #  latitudes that the field lines do not cross the 110 km footpointing 
+        #  altitude.
+        nomask = np.argwhere(~mask)
+        imin = np.min(nomask[:,0])
+        imax = np.max(nomask[:,0])
+        jmin = np.min(nomask[:,1])
+        jmax = np.max(nomask[:,1])
+        # This could also be handled by masking the mlat/mlon arrays outside the FoV
+        flat, flon, _ = A.apex2geo(mlat[imin:imax,jmin:jmax], mlon[imin:imax,jmin:jmax], footalt)
+
+#    flat, flon = A.map_to_height(glat, glon, projalt, footalt)
+
+    ###########################################################################
     
     with h5py.File(outfile, 'w') as h5:
 
@@ -68,12 +91,20 @@ def wizard(img, site_lat, site_lon, time,
         ds = h5.create_dataset('FootpointLatitude', data=flat)
         ds.attrs['Description'] = 'Magnetic Footpoint Latitude'
         ds.attrs['Units'] = 'degrees'
-        ds.attrs['Altitude'] = 110.
+        ds.attrs['Altitude'] = footalt
+        if projalt < footalt:
+            ds.attrs['Irange'] = [imin, imax]
+            ds.attrs['Jrange'] = [jmin, jmax]
+            ds.attrs['TrimDescription'] = 'The corners of the image (outside the FoV) cannot be mapped to the footpoint, so this array has been trimed to the index range given in Irange, Jrange'
 
         ds = h5.create_dataset('FootpointLongitude', data=flon)
         ds.attrs['Description'] = 'Magnetic Footpoint Longitude'
         ds.attrs['Units'] = 'degrees'
-        ds.attrs['Altitude'] = 110.
+        ds.attrs['Altitude'] = footalt
+        if projalt < footalt:
+            ds.attrs['Irange'] = [imin, imax]
+            ds.attrs['Jrange'] = [jmin, jmax]
+            ds.attrs['TrimDescription'] = 'The corners of the image (outside the FoV) cannot be mapped to the footpoint, so this array has been trimed to the index range given in Irange, Jrange'
 
         ds = h5.create_dataset('Azimuth', data=azmt)
         ds.attrs['Description'] = 'Azimuth angle east of North'
