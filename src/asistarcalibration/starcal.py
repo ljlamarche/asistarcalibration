@@ -164,14 +164,50 @@ class StarCal:
 
     def elev2r(self, elev):
 
+        #import cmath as cm
+
+        # This function is calculating the r value for a given elevation, or
+        #   the inverse of the lens function.  There should be a clever way
+        #   to do this with root finding given the lens function is just a
+        #   polynomial, but it's actually rather complicated due to imaginary
+        #   roots and roots outside the 0-1 range.  For now, a brute force
+        #   linear interpolation gives a consistently correct answer.
+
         el = np.deg2rad(elev)
 
-        Delta0 = self.C**2 - 3 * self.D * self.B
-        Delta1 = 2 * self.C**3 - 9 * self.D * self.C * self.B + 27 * self.D**2 * (self.A-el)
-        Gamma = ((Delta1 + np.sqrt(Delta1**2 - 4 * Delta0**3)) / 2)**(1./3.)
-        r = -(self.C + Gamma + Delta0/Gamma)/(3 * self.D)
-        print((Delta1**2 - 4 * Delta0**3))
-        print(elev, r)
+        rg = np.linspace(0., 1., 100)
+        lg = self.A + self.B * rg + self.C * rg**2 + self.D * rg**3
+
+        r = np.interp(el, lg[::-1], rg[::-1])
+
+#        Delta0 = (self.C**2 - 3 * self.D * self.B).astype(complex)
+#        Delta1 = (2 * self.C**3 - 9 * self.D * self.C * self.B + 27 * self.D**2 * (self.A-el)).astype(complex)
+#        Gamma = ((Delta1 + np.sqrt(Delta1**2 - 4 * Delta0**3)) / 2)**(1./3.)
+#        Gamma1 = Gamma*(-1+np.sqrt(-3+0j))/2
+#        Gamma2 = Gamma*(-1-np.sqrt(-3+0j))/2
+#
+#        Gamma0 = np.array([Gamma, Gamma1, Gamma2])
+#        print(np.min(np.abs(Gamma0.imag), axis=-1))
+#
+#        Gamma[np.isnan(Gamma)]
+#        r = -(self.C + Gamma2 + Delta0/Gamma2)/(3 * self.D)
+#        print('GAMMA')
+#        print(Gamma)
+#        print(Gamma1)
+#        print(Gamma2)
+#        print(elev, r)
+
+#        ## SOLVE THIS LATER TONIGHT
+#
+#        if np.isscalar(el):
+#            roots = np.roots([self.D, self.C, self.B, self.A-el])
+#            r = np.extract(np.logical_and(0.<=roots, roots<=1.), roots)
+#        else:
+#            r = list()
+#            for e in el:
+#                roots = np.roots([self.D, self.C, self.B, self.A-e])
+#                r.append(np.extract(np.logical_and(0<=roots, roots<=1), roots))
+#        print(r)
 
         return r
 
