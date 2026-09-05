@@ -28,8 +28,8 @@ class StarFinder:
         self.site_lat = glat
         self.site_lon = glon
 
-        # Make sure timw is timezone aware datetime object
-        time = time.item()
+        # Make sure time is timezone aware datetime object
+        #time = time.item()
         if not time.tzinfo:
             self.time = time.replace(tzinfo=dt.timezone.utc)
 

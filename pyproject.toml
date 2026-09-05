@@ -5,7 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 
 name = "asistarcalibration"
-dynamic = ["version"]
+#dynamic = ["version"]
+version = "1.0.0"
 description = "General ASI imager calibration"
 readme = "README.md"
 requires-python = ">= 3.9"
