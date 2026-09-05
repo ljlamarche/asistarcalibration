@@ -8,8 +8,8 @@ import numpy as np
 import h5py
 from apexpy import Apex
 
-from asistarcalibration.starcal import StarCal
-from asistarcalibration.starfinder import StarFinder
+from .starcal import StarCal
+from .starfinder import StarFinder
 
 def wizard(img, site_lat, site_lon, time, 
            starlist='starlist.txt', 
