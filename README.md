@@ -1,120 +1,77 @@
-# calibration
-This repository contains the scripts required to generate calibration files for MANGO imagers.  This is a somewhat labor intenseive process that requires manually identifying stars.
-
-This includes a program for generating the starcal files (lists of stars and their relative positions in an image) as well as a program that performs fitting from these files to find the rotation angle and lens funtion that will be applied in raw image processing.
+# asistarcalibration
+This package includes general procedures for geometric or "star" calibration of all-sky imagers. This is a somewhat labor intenseive process that requires manually identifying stars in an image, but the package includes widgets to simplify the process as well as the code to perform the fits to calculate the necessary rotation angle and lens function.  The code is intentionally designed to be generic and takes 2D arrays as image input rather than internally handling specific file formats.
 
 ## Installation
 This package can be installed from GitHub with pip.  Either clone and install
 ```
-git clone https://github.com/mangonetwork/image-calibration.git
-cd image-calibration
+git clone https://github.com/ljlamarche/asistarcalibration.git
+cd asistarcalibration
 pip install .
 ```
 or install directly from GitHub.
 ```
-pip install git+https://github.com/mangonetwork/image-calibration.git
+pip install git+https://github.com/ljlamarche/asistarcalibration.git
 ```
 
-## Command Line Programs
-This package primarily functions through command line programs, described below.  Before any of these functions will work, you MUST set the environment variable `MANGONETWORK_CONFIGS` to the path that is the default location for all your configuration and starcal files.
+## Usage
+A full description of the star calibration procedure and explination of both the steps and the background is provided in the [tutorial](https://github.com/ljlamarche/asistarcalibration/blob/main/tutorial/tutorial.ipynb).  The following is provied for quick refrence, but I highly recommend new users refer to the tutorial for detailed instructions.
+
+### Star Finding
+Stars are manually selected in an image.  Becaue each camera system is different, the process of reading in an image from a raw data file and manipulating it so the stars are visable is left to the user.  The following example shows how to use the `StarFinder` class after an image (`img`) is prepared.
+
 ```
-export MANGONETWORK_CONFIGS=/path/to/default/config/dir
+import numpy as np
+from asistarcalibration.starfinder import StarFinder
+
+time = np.datetime64('2025-01-03T03:27:00')
+glat = 65.5
+glon = -147.7
+
+sf = starfinder.StarFinder(glat, glon, time)
+sf.find_stars(img)
+sf.save_starcal_file('output_starfile.txt')
 ```
-You will have to run this export command every time you open a new terminal session.
+The output file contains a list of identified stars and their pixel locations within the image and will be used in the calibration step.
 
-### mango-starcal
-This program generates starcal files (lists of stars and their relative positions in an image).  Running it will open an image window.  Users should click on stars in the windown and then enter the corresponding HIP at the prompt.  A good calibration will require 10-20 stars identified.
+Suggustions for making stars visable in an image:
+- Co-add multiple images taken over a few minutes
+- Adjust the contrast in the image
+- Histogram equalize the image (`from asistarcalibration.wizard import equalize` provides a simple routine for this)
+- Manually select `vmin` and `vmax` for plotting (these can be passed to `find_stars` using the optional `imshow_kw` dictionary input)
+- Inverting or "flipping" the image so it matches the orientation in the reference starmaps (this is necessary for some cameras depending on the configuration of lenses)
 
-#### Basic usage
+### Calibration
+After a star file has been created, the `StarCal` clsass can be used to calculate the calibration parameters.
+
 ```
-mango-starcal <station> <instrument>
+sc = starcal.StarCal('output_starfile.txt')
+sc.calculate_calibration_params(*img.shape)
+
+print(sc.x0, sc.y0, sc.rl, sc.theta, sc.A, sc.B, sc.C, sc.D)
 ```
-This will load the default starcal file for this station and instrument and allow you to add additional stars.  It will raise an error if there is no default starcal file for this station and instrument.
 
-#### Create a new file from scratch
+The `checkcal` function can be used as a sainity check that the calibration is reasonable.
+
 ```
-mango-starcal <station> <instrument> -n -t <YYYY-MM-DDTHH:MM:SS>
+sc.checkcal(img, glat)
 ```
-This will create a new starcal file for this station and instrument using the time (ISO format) specifed in the `-t` flag.
 
-#### Specify output file
-The `-o` flag lets you explicitly name the output file.  The default is `mango-starcal.txt`.  Note that the output will always be saved to a new file, regardless of if the `-n` flag is used or not.  This program does not append to the existing or provided startcal files, however the stars listed in the starting starcal fill will be included in the new output file.
+### Calculate Pixel Positions
+The `StarCal` class can also calulate an array of the azimuth and elevation of every pixel in the image, as well as latitude and longitude of each pixel at an assumed altitude.
 
-#### Specify a starting starcal file
-The `-s` flag lets to explicity specify an input starcal file instead of using the default.  Note that this file sill will not be overwritten and the output will be saved as described above.
-
-### mango-calibrate
-This produces the calibration prameters required in the config file by finding the best fit of these parameters for the stars in the starcal file.  It will open a figure window so you can verify the fit is reasonable.
-
-#### Basic usage
 ```
-mango-calibrate <station> <instrument>
+alt = 110.  # km
+az, el, lat, lon = sc.calculate_position_array(glat, glon, alt, *img.shape)
 ```
-This will perform a calibration with the default starcal file.
-
-#### Specify output file
-The `-o` flag lets you explicitly name the output file.  The default is `mango-config.ini`.  Note that the output will always be saved to a new file.
-
-#### Specify the starcal file
-The `-s` flag lets you specify a starcal file to use other than the default.
-
-#### Specify the configuration file
-The `-c` flag lets you specify an existing configuration file.  This file will not be modified, but its contents (with the `CALIBRATATION` section updated) will be copied to the output file.
-
-### mango-checkcal
-Check that the calculated calibration makes sense with the original image used to generate the starcal file.
-
-#### Basic usage
-```
-mango-checkcal <station> <instrument>
-```
-This will open the original image with elevation angle and north marked.
-
-#### Specify the starcal file
-The `-s` flag lets you specify a custom starcal file.
-
-#### Specify the configuration file
-The `-c` flag lets you specify a custom configuration file.
-
-
-## Step-by-Step Guide to Calibrating a New MANGO Camera
-Before you begin, make sure you have installed both this package and [Stellarium](https://stellarium.org).
-
-1. Find a clear image from the camera in question.  This can usually be done by flipping through the quicklook movies on the [MANGONETWORK](https://www.mangonetwork.org/mango/v1/database/sites) website.  You ideally want to find a time where you can see the stars in the image clearly without clouds or haze and with moon down.
-
-2. Run `mango-starcal` for this camera and time.
-```
-mango-starcal <site> <instrument> -n -t <YYYY-MM-DDTHH:MM:SS> -o starcal-<site>-<instrument>.txt
-```
-This will open a matplotlib window with the raw image you selected.  DO NOT close this window.
-
-3. Open Stellarium and set to the date and time of the image.  The terminal window running the `mango-starcal` command should have the time and coordinates printed.
-    1. In the Configuration window (F2), under the "Extras" tab in "Additional information and settings" check "Use decimal degrees".
-    2. Pause time progression by hitting the "Play/Pause" button in the lower pop up bar or by pressing "K".
-    3. In the Location window (F6), set the latitude and longitude of the site.  Check "Use custom time zone" and set the time zone in the drop down menu to "UTC+00:00". If you want to make it easier to pull up this site in the future, enter the site name/abbreviation in the "Name/City" field and click "Add to list".
-    4. In the Date/time window (F5), set the date and time.
-    5. In the Sky and viewing options window (F4),  under the "Sky" tab in "Projection" select "Fish-eye". Also under the "SSO" tab uncheck "Solar System objects".
-    6. In the lower pop up bar, turn off all constellation highlighting, any grids, deep sky objects, planet labels, exoplanets, meteroid showers, and artificial satellites.  It is usually helpful to have "Ground" on.  "Atmosphere" may or may not be helpful.
-    7. Rotate the view and zoom in or out so you can see the entire circle of the sky on your screen.
-4. Find some identifiable stars or constellations in the MANGO image and rotate the Stellarium view so the two are approximately oriented in the same direction.
-5. Select a star in Stellarium and click on the same star in the matplotlib window (it will look like nothing happens, but only click ONCE). The terminal window should now additionally list the the x, y coordinates of the star you just selected and have a promp for the "HIP #". Enter the HIP number that Stellarium lists in the header of information about that star and hit enter. The matplotlib window should now have a red circle around that star.
-6. Repete step 5 until you've selected 10-20 stars.  Aim to get a good azimuthal spread of stars across the entire image.
-7. When done selecting stars, close the matplotlib window.  The file listed as the output file in step 2 should have been created.  If you open this file, it contains a header with camera and time information and a table of every star you selected with its name (if available), HIP number, aximuth, elevation, x coordinate, and y coordiinate.
-8. Run `mango-calibrate` with this starcal file.
-```
-mango-calibrate <site> <instrument> -s starcal-<site>-<instrument>.txt -o <site>-<instrument>.ini
-```
-This should pop up a window showing how the stars match the fitted rotation and lens function.  As long as nothing looks wierd, you can close this window and the output file will be created.  This is an \*.ini file that only includes the `CALIBRATION_PARAMS` section.
-
-9. Run `mango-checkcal` to confirm the calibration parameters transforms make sense on the original image.
-10. Move the newly createcd starcal and config files to your default config file directory.  You should add the `SITE_INFO`, `PROCESSING`, and `QUICKLOOK` fields to the config file so it can be used for processing data.  Alternatively, if you have a prior config file with these sections, you can specify it with the `-c` flag in step 8 and they will automatically be copied.
 
 **Notes:**
-- These programs are based off the [Hipparcos catolog](https://www.cosmos.esa.int/web/hipparcos/catalogues) and ONLY work with stars, not planets, moons or other objects.
-- Stellarium appends the HIP number of some stars with alphabetical characters, usually indicating a binary star system.  Only enter the numerical digits associated with each star at the command line when running `mango-starcal`.
-- If the figure that `mango-calibrate` pops up has a star that is wildly out of place, manually edit the starcal file and delete that line.  These can offset the fit and result in bad calibration.
-- You can create a new starcal file starting with the image and stars in an existing starcal file by specifying the existing file with the `-s` flag.  This is useful if you saved a starcal file midway through working on it, or realize you need to add more stars to improve the fit.
-```
-mango-starcal <site> <instrument> -s <existing_starcal_file>.txt -o starcal-<site>-<instrument>.txt
-```
-- After config and starcal files are added to the default location, it is not nessisary to explicity list them with the `-c` and `-s` flages to use them.
+- Star identification is based off the [Hipparcos catolog](https://www.cosmos.esa.int/web/hipparcos/catalogues) and work with stars and planets. Stars MUST be identified by their HIP number, but planets can be entered by name.
+- Stellarium appends the HIP number of some stars with alphabetical characters, usually indicating a binary star system.  Only enter the numerical digits associated with each star at the command line.
+- If the figure that `StarCal` pops up has a star that is wildly out of place, manually edit the starcal file and delete that line.  These can offset the fit and result in bad calibration.  This is often the result of accidentally entering the wrong HIP number.
+- You can load the stars from an existing star file using the `load_stars` function after the `StarFinder` class has been initalized.  This is useful if you saved a starcal file midway through working on it, or realize you need to add more stars to improve the fit.
+
+## Funding Acknowlegements
+The development of this software has been supported by the following:
+- NSF award AGS-1933013
+- NSF award AGS-2426523
+- NASA award 80NSSC24M0028

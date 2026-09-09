@@ -34,5 +34,6 @@ glat = 65.5
 glon = -147.7
 
 sf = starfinder.StarFinder(glat, glon, time)
+#sf.load_stars('test_out.txt')
 sf.find_stars(img_eq)
-sf.save_starcal_file('test_out.txt')
+sf.save_starcal_file('test_out2.txt')

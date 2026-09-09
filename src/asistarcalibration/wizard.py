@@ -6,10 +6,9 @@ Using this will skip some of the more flexible steps.
 
 import numpy as np
 import h5py
-from apexpy import Apex
 
-from asistarcalibration.starcal import StarCal
-from asistarcalibration.starfinder import StarFinder
+from .starcal import StarCal
+from .starfinder import StarFinder
 
 def wizard(img, site_lat, site_lon, time, 
            starlist='starlist.txt', 
@@ -43,6 +42,7 @@ def wizard(img, site_lat, site_lon, time,
     # This may be a specialized thing that should be handled elsewhere
     ###########################################################################
 
+    from apexpy import Apex
     A = Apex(time.item())
     mlat, mlon = A.geo2apex(glat, glon, projalt)
 
