@@ -42,7 +42,7 @@ class StarFinder:
 
     def load_stars(self, sc_file):
 
-        new_stars = pd.read_table(sc_file, comment='#', sep='\s+')
+        new_stars = pd.read_table(sc_file, comment='#', sep=r'\s+')
 
         self.starlist = pd.concat([self.starlist, new_stars])
 
