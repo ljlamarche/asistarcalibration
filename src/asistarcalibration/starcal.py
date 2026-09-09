@@ -24,7 +24,7 @@ class StarCal:
 
     def load_stars(self, sc_file):
 
-        new_stars = pd.read_table(sc_file, comment='#', sep='\s+')
+        new_stars = pd.read_table(sc_file, comment='#', sep=r'\s+')
 
         self.starlist = pd.concat([self.starlist, new_stars])
 
@@ -33,13 +33,19 @@ class StarCal:
         """Load calibration parameters from starcal file"""
 
         # true az/el of stars
-        az0 = self.starlist['az'] * np.pi / 180.
-        el0 = self.starlist['el'] * np.pi / 180.
+        az0 = self.starlist['az'].astype(float) * np.pi / 180.
+        el0 = self.starlist['el'].astype(float) * np.pi / 180.
+        # initial star pixel positions
+        xi0 = self.starlist['x'].astype(float)
+        yi0 = self.starlist['y'].astype(float)
+        
 
         #print(self.starlist['x'], self.starlist['y'])
-        init_params = self.initial_params(self.starlist['x'], self.starlist['y'], az0, el0, imax, jmax)
+        #init_params = self.initial_params(self.starlist['x'], self.starlist['y'], az0, el0, imax, jmax)
+        init_params = self.initial_params(xi0, yi0, az0, el0, imax, jmax)
 
-        params = least_squares(self.residuals, init_params, args=(self.starlist['x'], self.starlist['y'], az0, el0))
+        #params = least_squares(self.residuals, init_params, args=(self.starlist['x'], self.starlist['y'], az0, el0))
+        params = least_squares(self.residuals, init_params, args=(xi0, yi0, az0, el0))
         self.x0, self.y0, self.rl, self.theta, self.C, self.D = params.x
 
         # NOTE: A and B are fully constrained when fitting for rl
@@ -59,7 +65,7 @@ class StarCal:
         # DEBUG: To confirm star locations match after transformation
         # Generate plots of how well fitting conforms to real star positions
         if plot:
-            azt, elt = self.transform(self.starlist['x'], self.starlist['y'], self.x0, self.y0, self.rl,
+            azt, elt = self.transform(xi0, yi0, self.x0, self.y0, self.rl,
                                       self.theta, self.A, self.B, self.C, self.D)
             fig = plt.figure()
             ax1 = fig.add_subplot(121, projection='polar')
@@ -68,8 +74,10 @@ class StarCal:
             ax2 = fig.add_subplot(122)
             cmap=plt.get_cmap('tab20')
     
-            xn = (self.starlist['x'] - self.x0) / self.rl
-            yn = (self.starlist['y'] - self.y0) / self.rl
+            #xn = (self.starlist['x'] - self.x0) / self.rl
+            #yn = (self.starlist['y'] - self.y0) / self.rl
+            xn = (xi0 - self.x0) / self.rl
+            yn = (yi0 - self.y0) / self.rl
             rt = np.sqrt(xn**2 + yn**2)
     
             for i in range(len(self.starlist)):
@@ -276,8 +284,16 @@ class StarCal:
         y = self.y0 - r0 * self.rl * np.sin(np.deg2rad(self.theta))
         ax.scatter(x, y, s=50, color='magenta', marker='*', label='Polaris')
 
+        # true az/el of stars
+        az0 = self.starlist['az'].astype(float)
+        el0 = self.starlist['el'].astype(float)
+        # initial star pixel positions
+        xi0 = self.starlist['x'].astype(float)
+        yi0 = self.starlist['y'].astype(float)
+        
+        c = ax.scatter(xi0, yi0, facecolor=cmap2(az0/360.), edgecolor=cmap(el0/90.))
+
         # Add colorbars
-        c = ax.scatter(self.starlist['x'], self.starlist['y'], facecolor=cmap2(self.starlist['az']/360.), edgecolor=cmap(self.starlist['el']/90.))
         cax = fig.add_axes([0.8, 0.1, 0.02, 0.8])
         fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax, label='Elevation - Edge (deg)')
         cax = fig.add_axes([0.9, 0.1, 0.02, 0.8])
