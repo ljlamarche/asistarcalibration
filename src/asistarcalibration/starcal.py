@@ -36,6 +36,7 @@ class StarCal:
         az0 = self.starlist['az'] * np.pi / 180.
         el0 = self.starlist['el'] * np.pi / 180.
 
+        #print(self.starlist['x'], self.starlist['y'])
         init_params = self.initial_params(self.starlist['x'], self.starlist['y'], az0, el0, imax, jmax)
 
         params = least_squares(self.residuals, init_params, args=(self.starlist['x'], self.starlist['y'], az0, el0))
